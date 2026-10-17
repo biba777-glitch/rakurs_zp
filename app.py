@@ -499,6 +499,97 @@ def admin():
     return render_template('admin.html', employees=employees, results=results,
                            month=month, turnover=turnover, rules=rules, norm_hours=norm_hours,
                            payments_list=payments_list)
+# ---------- СТАТИСТИКА (только для админа) ----------
+@app.route('/stats')
+def stats():
+    if session.get('role') != 'admin':
+        return redirect(url_for('login'))
+    
+    period = request.args.get('period', 'year')  # month, quarter, halfyear, year
+    now = datetime.now()
+    year = int(request.args.get('year', now.year))
+    
+    # Определяем месяцы для выбранного периода
+    months = []
+    if period == 'month':
+        months = [f"{year}-{now.month:02d}"]
+    elif period == 'quarter':
+        q = (now.month - 1) // 3
+        for i in range(3):
+            m = q * 3 + i + 1
+            months.append(f"{year}-{m:02d}")
+    elif period == 'halfyear':
+        start = 1 if now.month <= 6 else 7
+        for m in range(start, start + 6):
+            months.append(f"{year}-{m:02d}")
+    else:  # year
+        for m in range(1, 13):
+            months.append(f"{year}-{m:02d}")
+    
+    conn = sqlite3.connect('database.db')
+    c = conn.cursor()
+    
+    data = []
+    total_turnover = 0
+    total_fot = 0
+    
+    for month in months:
+        # Оборот компании
+        c.execute("SELECT total_turnover FROM company WHERE month=?", (month,))
+        row = c.fetchone()
+        turnover = row[0] if row else 0
+        
+        # ФОТ: сумма начислений всех сотрудников за месяц
+        c.execute("SELECT id FROM users WHERE role='employee'")
+        employees = c.fetchall()
+        
+        fot = 0
+        for (emp_id,) in employees:
+            oklad = get_oklad(emp_id, month)
+            if oklad == 0:
+                continue
+                
+            c.execute("SELECT COALESCE(SUM(hours), 0) FROM work_hours WHERE user_id=? AND location='office' AND date LIKE ?",
+                      (emp_id, month + '%'))
+            office_hours = c.fetchone()[0]
+            
+            c.execute("SELECT COALESCE(SUM(hours), 0) FROM work_hours WHERE user_id=? AND location='remote' AND date LIKE ?",
+                      (emp_id, month + '%'))
+            remote_hours = c.fetchone()[0]
+            
+            c.execute("SELECT personal_sales FROM sales WHERE user_id=? AND month=?", (emp_id, month))
+            srow = c.fetchone()
+            personal_sales = srow[0] if srow else 0
+            
+            norm = get_norm_hours(month)
+            rate = oklad / norm if norm > 0 else 0
+            office_pay = rate * office_hours
+            remote_pay = rate * remote_hours * 0.7
+            percent = get_percent(personal_sales)
+            percent_pay = personal_sales * percent / 100
+            factual = office_pay + remote_pay + percent_pay
+            premium = factual * 0.1 if turnover > 3000000 else 0
+            fot += factual + premium
+        
+        percent_of_turnover = (fot / turnover * 100) if turnover > 0 else 0
+        
+        data.append({
+            'month': month,
+            'turnover': round(turnover, 2),
+            'fot': round(fot, 2),
+            'percent': round(percent_of_turnover, 1)
+        })
+        
+        total_turnover += turnover
+        total_fot += fot
+    
+    avg_percent = (total_fot / total_turnover * 100) if total_turnover > 0 else 0
+    
+    conn.close()
+    return render_template('stats.html', data=data, period=period, year=year,
+                           total_turnover=round(total_turnover, 2),
+                           total_fot=round(total_fot, 2),
+                           avg_percent=round(avg_percent, 1))
 
 init_db()
 
