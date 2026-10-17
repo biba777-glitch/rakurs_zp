@@ -496,6 +496,7 @@ def admin():
                            month=month, turnover=turnover, rules=rules, norm_hours=norm_hours,
                            payments_list=payments_list)
 
+init_db()
+
 if __name__ == '__main__':
-    init_db()
     app.run(host='0.0.0.0', port=8080)
