@@ -375,11 +375,13 @@ def admin():
         
         elif action == 'set_sales':
             user_id = int(request.form['user_id'])
-            sales = float(request.form['personal_sales'])
-            advance = float(request.form['advance'])
+            # Безопасное получение чисел (если пусто — ставим 0)
+            sales = float(request.form['personal_sales']) if request.form.get('personal_sales') else 0
+            advance = float(request.form['advance']) if request.form.get('advance') else 0
             advance_note = request.form.get('advance_note', '')
-            deduction = float(request.form['deduction'])
+            deduction = float(request.form['deduction']) if request.form.get('deduction') else 0
             deduction_note = request.form.get('deduction_note', '')
+            # ... дальше идет сохранение в базу (c.execute...)
             c.execute("INSERT OR REPLACE INTO sales (user_id, month, personal_sales, advance, advance_note, deduction, deduction_note) VALUES (?, ?, ?, ?, ?, ?, ?)",
                       (user_id, month, sales, advance, advance_note, deduction, deduction_note))
         
