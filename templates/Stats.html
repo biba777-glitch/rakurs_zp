@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Статистика — Моя зарплата</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f5f5f5; margin: 0; padding: 20px; }
+        .container { max-width: 1100px; margin: 0 auto; }
+        h1 { font-size: 24px; }
+        .card { background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .filters a { padding: 8px 16px; background: #eee; color: #333; text-decoration: none; border-radius: 6px; font-size: 14px; }
+        .filters a.active { background: #4a90d9; color: white; }
+        .filters a:hover { background: #3a7bc8; color: white; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
+        th { background: #f9f9f9; }
+        .total { font-weight: bold; color: #2a7a2a; font-size: 16px; }
+        .logout { float: right; color: #888; text-decoration: none; }
+        .summary { display: flex; gap: 20px; flex-wrap: wrap; }
+        .summary-item { background: #f9f9f9; padding: 15px; border-radius: 8px; flex: 1; min-width: 200px; }
+        .summary-item h3 { margin: 0 0 5px 0; font-size: 14px; color: #666; }
+        .summary-item p { margin: 0; font-size: 22px; font-weight: bold; color: #333; }
+        .percent-good { color: #2a7a2a; }
+        .percent-warn { color: #d98c2a; }
+        .percent-bad { color: #d9534f; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/admin" class="logout">← Назад в админку</a>
+        <h1>Статистика компании</h1>
+        
+        <div class="card">
+            <div class="filters">
+                <strong>Период:</strong>
+                <a href="?period=month&year={{ year }}" class="{% if period == 'month' %}active{% endif %}">Месяц</a>
+                <a href="?period=quarter&year={{ year }}" class="{% if period == 'quarter' %}active{% endif %}">Квартал</a>
+                <a href="?period=halfyear&year={{ year }}" class="{% if period == 'halfyear' %}active{% endif %}">Полгода</a>
+                <a href="?period=year&year={{ year }}" class="{% if period == 'year' %}active{% endif %}">Год</a>
+                <strong style="margin-left:20px;">Год:</strong>
+                <a href="?period={{ period }}&year={{ year - 1 }}">← {{ year - 1 }}</a>
+                <span style="padding: 8px 16px; font-weight: bold;">{{ year }}</span>
+                <a href="?period={{ period }}&year={{ year + 1 }}">{{ year + 1 }} →</a>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>Итоги за период</h2>
+            <div class="summary">
+                <div class="summary-item">
+                    <h3>Общий оборот</h3>
+                    <p>{{ "{:,.0f}".format(total_turnover).replace(',', ' ') }} ₽</p>
+                </div>
+                <div class="summary-item">
+                    <h3>Фонд зарплат (ФОТ)</h3>
+                    <p>{{ "{:,.0f}".format(total_fot).replace(',', ' ') }} ₽</p>
+                </div>
+                <div class="summary-item">
+                    <h3>Средний % ФОТ от оборота</h3>
+                    <p class="{% if avg_percent < 30 %}percent-good{% elif avg_percent < 50 %}percent-warn{% else %}percent-bad{% endif %}">{{ avg_percent }}%</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>Динамика: оборот vs ФОТ</h2>
+            <canvas id="chart" height="100"></canvas>
+        </div>
+        
+        <div class="card">
+            <h2>Детали по месяцам</h2>
+            <table>
+                <tr>
+                    <th>Месяц</th>
+                    <th>Оборот</th>
+                    <th>ФОТ</th>
+                    <th>% от оборота</th>
+                </tr>
+                {% for d in data %}
+                <tr>
+                    <td>{{ d.month }}</td>
+                    <td>{{ "{:,.0f}".format(d.turnover).replace(',', ' ') }} ₽</td>
+                    <td>{{ "{:,.0f}".format(d.fot).replace(',', ' ') }} ₽</td>
+                    <td class="{% if d.percent < 30 %}percent-good{% elif d.percent < 50 %}percent-warn{% else %}percent-bad{% endif %}">
+                        {{ d.percent }}%
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+    
+    <script>
+        const labels = {{ data | map(attribute='month') | list | tojson }};
+        const turnover = {{ data | map(attribute='turnover') | list | tojson }};
+        const fot = {{ data | map(attribute='fot') | list | tojson }};
+        
+        const ctx = document.getElementById('chart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Оборот компании',
+                        data: turnover,
+                        borderColor: '#4a90d9',
+                        backgroundColor: 'rgba(74, 144, 217, 0.1)',
+                        tension: 0.3,
+                        fill: true
+                    },
+                    {
+                        label: 'Фонд зарплат (ФОТ)',
+                        data: fot,
+                        borderColor: '#d9534f',
+                        backgroundColor: 'rgba(217, 83, 79, 0.1)',
+                        tension: 0.3,
+                        fill: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + 
+                                       context.parsed.y.toLocaleString('ru-RU') + ' ₽';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return value.toLocaleString('ru-RU') + ' ₽';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

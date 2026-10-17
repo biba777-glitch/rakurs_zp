@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ — Моя зарплата</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f5f5f5; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { font-size: 24px; }
+        h2 { font-size: 18px; margin-top: 0; }
+        .card { background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        input, select, textarea { padding: 8px; margin: 4px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; }
+        button { padding: 8px 16px; background: #4a90d9; color: white; border: none; border-radius: 6px; cursor: pointer; margin: 4px; }
+        button:hover { background: #3a7bc8; }
+        button.danger { background: #d9534f; }
+        button.danger:hover { background: #c9302c; }
+        button.success { background: #2a7a2a; }
+        button.success:hover { background: #1e5e1e; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #eee; font-size: 13px; }
+        th { background: #f9f9f9; }
+        .total { font-weight: bold; color: #2a7a2a; font-size: 16px; }
+        .ostatok-pos { color: #2a7a2a; font-weight: bold; }
+        .ostatok-neg { color: #d9534f; font-weight: bold; }
+        .logout { float: right; color: #888; text-decoration: none; }
+        .employee-block { border-bottom: 2px solid #eee; padding: 15px 0; }
+        .sub-block { background: #f9f9f9; padding: 10px; border-radius: 8px; margin-top: 8px; }
+        .stats-link { display:inline-block; padding:10px 20px; background:#2a7a2a; color:white; text-decoration:none; border-radius:8px; margin-top:10px; }
+        details summary { cursor:pointer; color:#4a90d9; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/logout" class="logout">Выйти</a>
+        <h1>Кабинет администратора</h1>
+        <a href="/stats" class="stats-link">📊 Статистика компании</a>
+        
+        <div class="card" style="margin-top:20px;">
+            <h2>Месяц: {{ month }}</h2>
+            <form method="GET">
+                <input type="month" name="month" value="{{ month }}" onchange="this.form.submit()">
+            </form>
+            <p>Норма часов: <strong>{{ norm_hours }}</strong></p>
+        </div>
+        
+        <div class="card">
+            <h2>Оборот компании</h2>
+            <form method="POST">
+                <input type="hidden" name="action" value="set_turnover">
+                <input type="number" name="turnover" value="{{ turnover }}" step="0.01">
+                <button type="submit">Сохранить</button>
+            </form>
+            <p>Премия 10%: {% if turnover > 3000000 %}<span style="color:green">ВКЛ</span>{% else %}<span style="color:red">ВЫКЛ</span>{% endif %}</p>
+        </div>
+        
+        <div class="card">
+            <h2>Правила процента</h2>
+            <table>
+                <tr><th>От</th><th>До</th><th>%</th><th></th></tr>
+                {% for rule in rules %}
+                <tr>
+                    <td>{{ rule[1] }}</td>
+                    <td>{{ rule[2] }}</td>
+                    <td>{{ rule[3] }}%</td>
+                    <td>
+                        <form method="POST" style="display:inline;">
+                            <input type="hidden" name="action" value="delete_rule">
+                            <input type="hidden" name="rule_id" value="{{ rule[0] }}">
+                            <button type="submit" class="danger">Удалить</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+            <form method="POST" style="margin-top:10px;">
+                <input type="hidden" name="action" value="add_rule">
+                <input type="number" name="min_sales" placeholder="От" required>
+                <input type="number" name="max_sales" placeholder="До" required>
+                <input type="number" name="percent" placeholder="%" step="0.1" required>
+                <button type="submit">Добавить</button>
+            </form>
+        </div>
+        
+        <div class="card">
+            <h2>Сотрудники</h2>
+            {% for r in results %}
+            <div class="employee-block">
+                <h3>{{ r.name }}</h3>
+                
+                <!-- Оклад -->
+                <div class="sub-block">
+                    <strong>Оклад на {{ month }}:</strong> {{ r.oklad }} ₽
+                    <form method="POST" style="display:inline;">
+                        <input type="hidden" name="action" value="set_oklad">
+                        <input type="hidden" name="user_id" value="{{ r.id }}">
+                        <input type="number" name="oklad" value="{{ r.oklad }}" step="0.01" style="width:120px;">
+                        <button type="submit">Установить</button>
+                    </form>
+                </div>
+                
+                <!-- Расчёт -->
+                <p>Ставка: {{ r.rate }} ₽/час | Норма: {{ norm_hours }} ч</p>
+                <p>Офис: {{ r.office_hours }} ч → {{ r.office_pay }} ₽</p>
+                <p>Удалёнка: {{ r.remote_hours }} ч → {{ r.remote_pay }} ₽ (минус 30%)</p>
+                <p>Продажи: {{ r.personal_sales }} ₽ | {{ r.percent }}% → {{ r.percent_pay }} ₽</p>
+                <p><strong>Начислено: {{ r.nachisleno }} ₽</strong> (премия {{ r.premium }} ₽)</p>
+                
+                <!-- Продажи, аванс, удержания -->
+                <div class="sub-block">
+                    <form method="POST">
+                        <input type="hidden" name="action" value="set_sales">
+                        <input type="hidden" name="user_id" value="{{ r.id }}">
+                        <input type="number" name="personal_sales" value="{{ r.personal_sales }}" placeholder="Продажи" step="0.01" style="width:100px;">
+                        <input type="number" name="advance" value="{{ r.advance }}" placeholder="Аванс" step="0.01" style="width:90px;">
+                        <input type="text" name="advance_note" value="{{ r.advance_note }}" placeholder="Прим. к авансу" style="width:140px;">
+                        <input type="number" name="deduction" value="{{ r.deduction }}" placeholder="Удержание" step="0.01" style="width:100px;">
+                        <input type="text" name="deduction_note" value="{{ r.deduction_note }}" placeholder="Прим. к удержанию" style="width:160px;">
+                        <button type="submit">Сохранить</button>
+                    </form>
+                </div>
+                
+                <!-- Выплаты -->
+                <div class="sub-block">
+                    <strong>Получено: {{ r.received }} ₽</strong> | 
+                    Перенос: <span class="{% if r.carry >= 0 %}ostatok-pos{% else %}ostatok-neg{% endif %}">{{ r.carry }} ₽</span> | 
+                    <strong>Остаток: <span class="{% if r.ostatok >= 0 %}ostatok-pos{% else %}ostatok-neg{% endif %}">{{ r.ostatok }} ₽</span></strong>
+                    <form method="POST" style="margin-top:6px;">
+                        <input type="hidden" name="action" value="add_payment">
+                        <input type="hidden" name="user_id" value="{{ r.id }}">
+                        <input type="number" name="amount" placeholder="Сумма" step="0.01" style="width:100px;" required>
+                        <input type="date" name="pay_date" required>
+                        <input type="text" name="note" placeholder="Примечание" style="width:160px;">
+                        <button type="submit" class="success">Добавить выплату</button>
+                    </form>
+                </div>
+                
+                <!-- Часы (детали) -->
+                <details style="margin-top:8px;">
+                    <summary>Показать/изменить дни ({{ r.hours_records|length }})</summary>
+                    <div class="sub-block">
+                        <form method="POST" style="margin-bottom:10px;">
+                            <input type="hidden" name="action" value="add_hours">
+                            <input type="hidden" name="user_id" value="{{ r.id }}">
+                            <input type="date" name="work_date" required>
+                            <select name="location">
+                                <option value="office">Офис</option>
+                                <option value="remote">Удалёнка</option>
+                            </select>
+                            <button type="submit" class="success">Добавить день (8 ч)</button>
+                        </form>
+                        <table>
+                            <tr><th>Дата</th><th>Время</th><th>Место</th><th>Часы</th><th></th></tr>
+                            {% for hr in r.hours_records %}
+                            <tr>
+                                <td>{{ hr[1] }}</td>
+                                <td>{{ hr[2] }}–{{ hr[3] }}</td>
+                                <td>{{ 'Офис' if hr[4] == 'office' else 'Удалёнка' }}</td>
+                                <td>{{ hr[5] }}</td>
+                                <td>
+                                    <form method="POST" style="display:inline;">
+                                        <input type="hidden" name="action" value="delete_hours">
+                                        <input type="hidden" name="record_id" value="{{ hr[0] }}">
+                                        <button type="submit" class="danger" style="padding:4px 8px; font-size:12px;">Удалить</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                    </div>
+                </details>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <div class="card">
+            <h2>История выплат за {{ month }}</h2>
+            <table>
+                <tr><th>Сотрудник</th><th>Сумма</th><th>Дата</th><th>Примечание</th><th></th></tr>
+                {% for p in payments_list %}
+                <tr>
+                    <td>{{ p[1] }}</td>
+                    <td>{{ p[2] }} ₽</td>
+                    <td>{{ p[3] }}</td>
+                    <td>{{ p[4] }}</td>
+                    <td>
+                        <form method="POST" style="display:inline;">
+                            <input type="hidden" name="action" value="delete_payment">
+                            <input type="hidden" name="payment_id" value="{{ p[0] }}">
+                            <button type="submit" class="danger" style="padding:4px 8px; font-size:12px;">Удалить</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+</body>
+</html>

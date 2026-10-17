@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Моя зарплата</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f5f5f5; margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        h1 { font-size: 24px; }
+        h2 { font-size: 18px; margin-top: 0; }
+        .card { background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        input, select { padding: 8px; margin: 4px; border: 1px solid #ddd; border-radius: 6px; }
+        button { padding: 8px 16px; background: #4a90d9; color: white; border: none; border-radius: 6px; cursor: pointer; margin: 4px; }
+        button:hover { background: #3a7bc8; }
+        button.danger { background: #d9534f; }
+        button.danger:hover { background: #c9302c; }
+        button.success { background: #2a7a2a; }
+        button.success:hover { background: #1e5e1e; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #eee; font-size: 13px; }
+        th { background: #f9f9f9; }
+        .total { font-size: 22px; font-weight: bold; color: #2a7a2a; }
+        .ostatok-pos { color: #2a7a2a; font-weight: bold; }
+        .ostatok-neg { color: #d9534f; font-weight: bold; }
+        .logout { float: right; color: #888; text-decoration: none; }
+        .explain { color: #666; font-size: 13px; margin-top: 8px; }
+        .edit-form { background: #f9f9f9; padding: 10px; border-radius: 8px; margin-top: 5px; }
+        .day-row { background: #fff; border-bottom: 1px solid #eee; padding: 8px; }
+        .day-row:nth-child(even) { background: #fafafa; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/logout" class="logout">Выйти</a>
+        <h1>Привет, {{ session.full_name }}</h1>
+        
+        <div class="card">
+            <form method="GET">
+                <input type="month" name="month" value="{{ month }}" onchange="this.form.submit()">
+            </form>
+            <p>Норма часов: <strong>{{ norm_hours }}</strong> | Оклад: <strong>{{ oklad }} ₽</strong></p>
+        </div>
+        
+        <div class="card">
+            <h2>Добавить выходной день</h2>
+            <form method="POST">
+                <input type="hidden" name="action" value="add_day">
+                <input type="date" name="work_date" required>
+                <select name="location">
+                    <option value="office">Офис</option>
+                    <option value="remote">Удалёнка</option>
+                </select>
+                <button type="submit" class="success">Добавить (8 часов)</button>
+            </form>
+        </div>
+        
+        <div class="card">
+            <h2>Расчёт за {{ month }}</h2>
+            <p>Отработано в офисе: <strong>{{ office_hours }} ч</strong></p>
+            <p>Отработано на удалёнке: <strong>{{ remote_hours }} ч</strong></p>
+            <p>Ставка в час: {{ rate }} ₽</p>
+            <hr>
+            <p>Начислено:</p>
+            <p>— Офис: {{ office_pay }} ₽</p>
+            <p>— Удалёнка (минус 30%): {{ remote_pay }} ₽</p>
+            <p>— Процент от продаж ({{ percent }}%): {{ percent_pay }} ₽</p>
+            <p>— Премия 10%: {{ premium }} ₽ {% if premium > 0 %}(оборот компании > 3 млн){% endif %}</p>
+            <p><strong>Итого начислено: {{ nachisleno }} ₽</strong></p>
+            <hr>
+            <p>Аванс: −{{ advance }} ₽ {% if advance_note %}({{ advance_note }}){% endif %}</p>
+            <p>Удержание: −{{ deduction }} ₽ {% if deduction_note %}({{ deduction_note }}){% endif %}</p>
+            <p>Получено: {{ received }} ₽</p>
+            <p>Перенос с прошлого: <span class="{% if carry >= 0 %}ostatok-pos{% else %}ostatok-neg{% endif %}">{{ carry }} ₽</span></p>
+            <p class="total">Остаток: <span class="{% if ostatok >= 0 %}ostatok-pos{% else %}ostatok-neg{% endif %}">{{ ostatok }} ₽</span></p>
+            <p class="explain">Сумма рассчитана автоматически на основе ваших часов, продаж и данных компании.</p>
+        </div>
+        
+        <div class="card">
+            <h2>Мои дни за {{ month }}</h2>
+            <table>
+                <tr><th>Дата</th><th>Начало</th><th>Конец</th><th>Место</th><th>Часы</th><th></th></tr>
+                {% for rec in records %}
+                <tr>
+                    <td>{{ rec[1] }}</td>
+                    <td>{{ rec[2] }}</td>
+                    <td>{{ rec[3] }}</td>
+                    <td>{{ 'Офис' if rec[4] == 'office' else 'Удалёнка' }}</td>
+                    <td>{{ rec[5] }}</td>
+                    <td>
+                        <details>
+                            <summary style="cursor:pointer; color:#4a90d9;">Исправить</summary>
+                            <form method="POST" class="edit-form">
+                                <input type="hidden" name="action" value="edit_day">
+                                <input type="hidden" name="record_id" value="{{ rec[0] }}">
+                                <select name="location">
+                                    <option value="office" {% if rec[4] == 'office' %}selected{% endif %}>Офис</option>
+                                    <option value="remote" {% if rec[4] == 'remote' %}selected{% endif %}>Удалёнка</option>
+                                </select>
+                                <input type="time" name="start_time" value="{{ rec[2] }}">
+                                <input type="time" name="end_time" value="{{ rec[3] }}">
+                                <button type="submit">Сохранить</button>
+                            </form>
+                        </details>
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+        
+        <div class="card">
+            <h2>Мои выплаты за {{ month }}</h2>
+            <table>
+                <tr><th>Сумма</th><th>Дата</th><th>Примечание</th></tr>
+                {% for p in payments_list %}
+                <tr>
+                    <td>{{ p[0] }} ₽</td>
+                    <td>{{ p[1] }}</td>
+                    <td>{{ p[2] }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+</body>
+</html>
