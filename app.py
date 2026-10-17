@@ -1,5 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 import sqlite3
+import os
+DB_PATH = "/tmp/database.db"
 import hashlib
 import calendar
 from datetime import datetime, date
@@ -9,7 +11,7 @@ app.secret_key = 'kristina_secret_key_2026'
 
 # ---------- БАЗА ДАННЫХ ----------
 def init_db():
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     
     # Пользователи (без оклада — оклад в salaries)
@@ -110,7 +112,7 @@ def get_norm_hours(month_str):
     return work_days * 8
 
 def get_percent(sales):
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT percent FROM percent_rules WHERE ? BETWEEN min_sales AND max_sales", (sales,))
     row = c.fetchone()
@@ -119,7 +121,7 @@ def get_percent(sales):
 
 def get_oklad(user_id, month):
     """Берёт оклад за месяц. Если нет — 0."""
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT oklad FROM salaries WHERE user_id=? AND month=?", (user_id, month))
     row = c.fetchone()
@@ -131,7 +133,7 @@ def auto_fill_days(user_id, month):
     year, mon = map(int, month.split('-'))
     days_in_month = calendar.monthrange(year, mon)[1]
     
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     
     for day in range(1, days_in_month + 1):
@@ -155,7 +157,7 @@ def get_carry_over(user_id, month):
     else:
         prev_month = f"{year}-{mon-1:02d}"
     
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     
     oklad = get_oklad(user_id, prev_month)
@@ -238,7 +240,7 @@ def employee():
     if session.get('role') != 'employee':
         return redirect(url_for('login'))
     
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     user_id = session['user_id']
     month = request.args.get('month', datetime.now().strftime('%Y-%m'))
@@ -349,7 +351,7 @@ def admin():
     if session.get('role') != 'admin':
         return redirect(url_for('login'))
     
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     
     month = request.args.get('month', datetime.now().strftime('%Y-%m'))
